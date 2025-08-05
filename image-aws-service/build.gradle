@@ -1,20 +1,11 @@
 plugins {
     id 'java'
     id 'org.springframework.boot' version '3.3.1'
-    id 'com.github.johnrengelman.shadow' version '8.1.1'
     id 'io.spring.dependency-management' version '1.1.5'
 }
 
-group = 'com.MM'
+group = 'com.mm'
 version = '0.0.1-SNAPSHOT'
-
-
-  bootJar {
-      enabled = false
-  }
-  jar {
-      enabled = true
-  }
 
 java {
     toolchain {
@@ -28,58 +19,56 @@ repositories {
 
 dependencyManagement {
     imports {
-        mavenBom "software.amazon.awssdk:bom:2.25.64"
+        mavenBom "software.amazon.awssdk:bom:2.25.31"
     }
 }
 
 dependencies {
-    // Spring Web & Security
-    implementation 'org.springframework.boot:spring-boot-starter-web'
-    implementation 'org.springframework.boot:spring-boot-starter-security'
-
-    implementation 'org.springframework.boot:spring-boot-starter-validation'
-
-    // === Spring Data Redis ===
-    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
-
-    // Spring Data JPA & Oracle Driver
+    // Spring Boot Starters
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-    implementation 'com.oracle.database.jdbc:ojdbc8:21.7.0.0'
-    runtimeOnly 'com.oracle.database.jdbc:ojdbc11'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+    implementation('org.springframework.boot:spring-boot-starter-web') {
+        exclude group: 'org.springframework.boot', module: 'spring-boot-starter-tomcat'
+    }
 
-    // Thư viện trích xuất metadata từ ảnh
-    implementation 'com.drewnoakes:metadata-extractor:2.18.0'
+    implementation 'com.amazonaws:aws-lambda-java-core:1.2.3'
+    implementation 'com.amazonaws:aws-lambda-java-events:3.11.5'
+    implementation ('com.amazonaws.serverless:aws-serverless-java-container-springboot3:2.0.1'){
+        exclude group: 'com.fasterxml.jackson.core', module: 'jackson-core'
+        exclude group: 'com.fasterxml.jackson.core', module: 'jackson-databind'
+        exclude group: 'com.fasterxml.jackson.core', module: 'jackson-annotations'
+    }
 
-    // AWS S3
+    // AWS SDK v2
+    implementation 'software.amazon.awssdk:s3'
+    implementation 'software.amazon.awssdk:sqs'
     implementation 'software.amazon.awssdk:s3-transfer-manager'
-    implementation 'software.amazon.awssdk:netty-nio-client'
-    implementation 'software.amazon.awssdk.crt:aws-crt:0.29.17'
 
-    // Apache HttpClient
-    implementation 'org.apache.httpcomponents.client5:httpclient5:5.2.1'
-
-    // Thư viện JWT
+    implementation 'org.apache.httpcomponents.client5:httpclient5:5.3.1'
+    implementation 'com.drewnoakes:metadata-extractor:2.19.0'
     implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
+    implementation 'org.imgscalr:imgscalr-lib:4.2'
+
+    // Runtime & Compile-Only
     runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.11.5'
     runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.11.5'
-
-    // Lombok và Jackson
     compileOnly 'org.projectlombok:lombok'
+    runtimeOnly 'com.oracle.database.jdbc:ojdbc11'
     annotationProcessor 'org.projectlombok:lombok'
-    implementation 'com.fasterxml.jackson.core:jackson-databind'
-
-    // === THÊM MỚI: Thư viện JavaFaker để tạo dữ liệu mẫu ===
-    implementation('com.github.javafaker:javafaker:1.0.2') {
-        exclude group: 'org.yaml', module: 'snakeyaml'
-    }
 
     // Test
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-    implementation 'com.amazonaws:aws-lambda-java-core:1.2.2'
 }
 
 tasks.named('test') {
     useJUnitPlatform()
 }
+tasks.withType(JavaCompile) {
+    options.encoding = 'UTF-8'
+}
+
+

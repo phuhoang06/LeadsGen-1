@@ -2,44 +2,54 @@ package com.mm.image_aws.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;
+import lombok.ToString;
 
-@Data
+import java.time.LocalDateTime;
+
 @Entity
-@Table(name = "IMAGE_METADATA")
+@Table(name = "image_metadata")
+@Data
 public class ImageMetadata {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "image_metadata_seq")
-    @SequenceGenerator(name = "image_metadata_seq", sequenceName = "IMAGE_METADATA_SEQ", allocationSize = 1)
-    @Column(name = "ID")
-    private Long id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "metadata_id")
+    private Long metadataId;
 
-    // --- THÊM MỐI QUAN HỆ MANY-TO-ONE ---
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "UPLOAD_JOB_ID") // Tên cột khóa ngoại trong bảng IMAGE_METADATA
-    private UploadJob uploadJob;
-    // ------------------------------------
+    @JoinColumn(name = "job_id", nullable = false)
+    @ToString.Exclude
+    private UploadJob job;
 
-    @Lob
-    @Column(name = "ORIGINAL_URL", nullable = false)
+    @Column(name = "original_url", length = 2048)
     private String originalUrl;
 
-    @Lob
-    @Column(name = "CDN_URL")
+    @Column(name = "cdn_url", length = 2048)
     private String cdnUrl;
 
-    @Column(name = "WIDTH")
+    @Column(name = "s3_key")
+    private String s3Key;
+
+    private String format; // e.g., JPEG, PNG
+
+    // [SỬA LỖI] Thay đổi từ 'int' thành 'Integer' để cho phép giá trị null
+    @Column(name = "width")
     private Integer width;
 
-    @Column(name = "HEIGHT")
+    @Column(name = "height")
     private Integer height;
 
-    @Column(name = "DPI")
+    @Column(name = "file_size")
+    private long fileSize; // in bytes
+
+    // [THÊM MỚI] Bổ sung trường DPI
+    @Column(name = "dpi")
     private Integer dpi;
 
-    @Column(name = "FILE_SIZE")
-    private Long fileSize;
-
-    @Column(name = "ERROR_MESSAGE")
+    // [THÊM MỚI] Bổ sung trường để lưu thông báo lỗi
+    @Column(name = "error_message", length = 512)
     private String errorMessage;
+
+    @Column(name = "created_at", nullable = false)
+    private LocalDateTime createdAt = LocalDateTime.now(); // Gán giá trị mặc định
 }

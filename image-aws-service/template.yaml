@@ -1,0 +1,80 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  LeadsGen - Image AWS Service. This stack deploys the API and the image processing backend.
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 1024
+    Runtime: java17
+    Architectures:
+      - x86_64
+
+Resources:
+  # Quay lại dùng SQS Standard cho đơn giản, xóa các thuộc tính FIFO
+  ImageProcessingQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 400 # Giữ lại cấu hình này, nó đã đúng
+
+  # Xóa BucketName để CloudFormation tự tạo tên duy nhất
+  ImagesBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  ImageApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: com.mm.image_aws.StreamLambdaHandler
+      AutoPublishAlias: live
+      Environment:
+        Variables:
+          AWS_SQS_QUEUE_URL: !Ref ImageProcessingQueue
+          # Tạm thời comment out các biến DB để deploy thành công
+          # SPRING_DATASOURCE_URL: jdbc:oracle:thin:@//YOUR_RDS_ENDPOINT:1521/yourdb
+          # SPRING_DATASOURCE_USERNAME: root
+          JWT_SECRET: "10f09f2ed799b94e868ee03ade7ec988dbe04af25d6d2b661c64b4aac4725c98dae559a48e5c06004eeed78af816a0b74bfdbab7a19ef11a9f325f9d12d54d99"
+          AWS_BUCKET: !Ref ImagesBucket
+          AWS_CDN_DOMAIN: d69wruydw34fj.cloudfront.net
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - sqs:SendMessage
+              Resource: !GetAtt ImageProcessingQueue.Arn
+        - S3ReadPolicy:
+            BucketName: !Ref ImagesBucket
+      Events:
+        HttpApi:
+          Type: HttpApi
+
+  ImageProcessorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: com.mm.image_aws.handler.ImageProcessorHandler::handleRequest
+      Timeout: 300
+      MemorySize: 1536
+      Policies:
+        - SQSPollerPolicy:
+            QueueName: !GetAtt ImageProcessingQueue.Arn
+        - S3CrudPolicy:
+            BucketName: !Ref ImagesBucket
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt ImageProcessingQueue.Arn
+            BatchSize: 5
+
+Outputs:
+  ImageApiEndpoint:
+    Description: "API Gateway endpoint URL for Image Service"
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com"

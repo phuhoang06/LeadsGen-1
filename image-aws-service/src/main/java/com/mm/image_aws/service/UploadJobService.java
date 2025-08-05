@@ -1,171 +1,174 @@
 package com.mm.image_aws.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mm.image_aws.dto.CdnUrlResponse;
-import com.mm.image_aws.dto.JobStatus;
 import com.mm.image_aws.dto.JobStatusResponse;
 import com.mm.image_aws.dto.UploadRequest;
 import com.mm.image_aws.entity.ImageMetadata;
 import com.mm.image_aws.entity.UploadJob;
-import com.mm.image_aws.entity.User;
+import com.mm.image_aws.repo.ImageMetadataRepository;
 import com.mm.image_aws.repo.UploadJobRepository;
+import jakarta.persistence.EntityNotFoundException;
+import lombok.AllArgsConstructor;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import software.amazon.awssdk.services.sqs.SqsAsyncClient;
+import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
 
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class UploadJobService {
+
     private final UploadJobRepository uploadJobRepository;
-    private final ImageProcessingService imageProcessingService;
+    private final ImageMetadataRepository imageMetadataRepository;
+    private final SqsAsyncClient sqsClient;
+    private final ObjectMapper objectMapper;
+
+    @Value("${aws.sqs.queue.url}")
+    private String queueUrl;
+
+    @Value("${aws.cdn.domain-name}")
+    private String cdnDomain;
 
     public Long createJob(UploadRequest uploadRequest, String username) {
-        // === TỐI ƯU: Xử lý nhiều URLs cùng lúc ===
         List<String> urls = uploadRequest.getUrls();
         if (urls == null || urls.isEmpty()) {
-            throw new IllegalArgumentException("No URLs provided in upload request");
+            throw new IllegalArgumentException("URL list cannot be empty");
         }
 
-        // Tạo job với thông tin URLs
         UploadJob job = new UploadJob();
-        // Không lưu tất cả URLs trong một chuỗi dài nữa
-        // job.setImageUrl(String.join("|", urls)); 
-        job.setImageUrl(""); // Để trống vì không cần lưu tất cả URLs
-        job.setUrlCount(urls.size()); // Lưu số lượng URLs
-        job.setStatus(JobStatus.PENDING);
         job.setUsername(username);
-        job.setTotalUrls(urls.size());
-        job.setProcessedUrls(0);
-        
+        job.setTotalImages(urls.size());
+        job.setProcessedImages(0);
+        job.setStatus("PENDING");
+        job.setCreatedAt(LocalDateTime.now());
+        job.setUpdatedAt(LocalDateTime.now());
+
         UploadJob savedJob = uploadJobRepository.save(job);
         log.info("Created job with ID: {} for user: {} with {} URLs", savedJob.getJobId(), username, urls.size());
-        
-        // Xử lý tất cả URLs cùng lúc
-        imageProcessingService.processMultipleImages(savedJob.getJobId(), urls);
+
+        for (String url : urls) {
+            try {
+                SqsMessagePayload payload = new SqsMessagePayload(savedJob.getJobId(), url);
+                String messageBody = objectMapper.writeValueAsString(payload);
+                SendMessageRequest sendMessageRequest = SendMessageRequest.builder()
+                        .queueUrl(queueUrl)
+                        .messageBody(messageBody)
+                        .messageGroupId(savedJob.getJobId().toString())
+                        .messageDeduplicationId(UUID.randomUUID().toString())
+                        .build();
+
+                sqsClient.sendMessage(sendMessageRequest).thenAccept(response -> {
+                    log.info("Successfully sent message for URL: {} with MessageId: {}", url, response.messageId());
+                }).exceptionally(ex -> {
+                    log.error("Failed to send message for URL: {}", url, ex);
+                    return null;
+                });
+
+            } catch (JsonProcessingException e) {
+                log.error("Error serializing SQS message payload for job ID: {}", savedJob.getJobId(), e);
+            }
+        }
+        log.info("Queued {} messages for job ID: {}", urls.size(), savedJob.getJobId());
+
         return savedJob.getJobId();
     }
 
-    public JobStatusResponse getJobStatus(String jobId) {
-        Long numericJobId;
-        try {
-            numericJobId = Long.parseLong(jobId);
-        } catch (NumberFormatException e) {
-            throw new RuntimeException("Invalid job ID format: " + jobId);
-        }
-        UploadJob job = uploadJobRepository.findById(numericJobId)
-                .orElseThrow(() -> new RuntimeException("Job not found with id: " + jobId));
-        return JobStatusResponse.fromJob(job);
+    public JobStatusResponse getJobStatus(Long jobId) {
+        UploadJob job = uploadJobRepository.findById(jobId)
+                .orElseThrow(() -> new EntityNotFoundException("Job not found with ID: " + jobId));
+
+        return new JobStatusResponse(
+                job.getJobId(),
+                job.getStatus(),
+                job.getTotalImages(),
+                job.getProcessedImages(),
+                job.getCreatedAt(),
+                job.getUpdatedAt()
+        );
     }
 
-    // === PHẦN SỬA LỖI: Thêm phương thức bị thiếu ===
+    public List<JobStatusResponse> getUserJobs(String username) {
+        List<UploadJob> jobs = uploadJobRepository.findByUsernameOrderByCreatedAtDesc(username);
+        return jobs.stream()
+                .map(job -> new JobStatusResponse(
+                        job.getJobId(),
+                        job.getStatus(),
+                        job.getTotalImages(),
+                        job.getProcessedImages(),
+                        job.getCreatedAt(),
+                        job.getUpdatedAt()
+                ))
+                .collect(Collectors.toList());
+    }
+
+    public List<String> getUserCdnUrls(String username) {
+        List<ImageMetadata> metadataList = imageMetadataRepository.findByJobUsernameOrderByCreatedAtDesc(username);
+        return metadataList.stream()
+                .map(ImageMetadata::getCdnUrl)
+                .collect(Collectors.toList());
+    }
+
+    public List<CdnUrlResponse> getUserDetailedCdnUrls(String username) {
+        List<ImageMetadata> metadataList = imageMetadataRepository.findByJobUsernameOrderByCreatedAtDesc(username);
+        return metadataList.stream()
+                .map(meta -> new CdnUrlResponse(
+                        meta.getJob().getJobId(),
+                        meta.getOriginalUrl(),
+                        meta.getCdnUrl(),
+                        meta.getCreatedAt()
+                ))
+                .collect(Collectors.toList());
+    }
+
     /**
-     * Cập nhật trạng thái của một job sau khi quá trình xử lý ảnh hoàn tất.
-     * Phương thức này được gọi bởi ImageProcessingService.
-     * Nó chạy trong một transaction mới để đảm bảo tính nhất quán của dữ liệu.
+     * [THÊM MỚI] Cập nhật trạng thái của Job sau khi một ảnh được xử lý.
+     *
+     * Phương thức này được đánh dấu là `synchronized` để đảm bảo an toàn luồng (thread-safe).
+     * Khi nhiều ảnh của cùng một job được xử lý song song, phương thức này
+     * sẽ ngăn chặn các vấn đề về dữ liệu (race conditions).
+     *
      * @param jobId ID của job cần cập nhật.
      */
-    @Transactional
-    public void updateJobAfterProcessing(Long jobId) {
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public synchronized void updateJobAfterProcessing(Long jobId) {
+        // Sử dụng findById và orElseThrow để lấy Job, đảm bảo job tồn tại
         UploadJob job = uploadJobRepository.findById(jobId)
-                .orElseThrow(() -> {
-                    log.error("Attempted to update a non-existent job with ID: {}", jobId);
-                    return new RuntimeException("Job not found with id: " + jobId);
-                });
+                .orElseThrow(() -> new EntityNotFoundException("Không tìm thấy Job với ID: " + jobId));
 
-        // Đánh dấu là đã xử lý xong 1 URL
-        job.setProcessedUrls(job.getProcessedUrls() + 1);
+        // Tăng số lượng ảnh đã xử lý
+        job.setProcessedImages(job.getProcessedImages() + 1);
+        job.setUpdatedAt(LocalDateTime.now());
 
-        // Kiểm tra xem đã xử lý xong tất cả URLs chưa
-        if (job.getProcessedUrls() >= job.getTotalUrls()) {
-            List<ImageMetadata> metadataList = job.getImageMetadataList();
-            
-            if (metadataList != null && !metadataList.isEmpty()) {
-                // Kiểm tra xem có ít nhất 1 ảnh thành công không
-                boolean hasSuccess = metadataList.stream()
-                        .anyMatch(metadata -> metadata.getCdnUrl() != null && !metadata.getCdnUrl().isEmpty());
-                
-                if (hasSuccess) {
-                    job.setStatus(JobStatus.COMPLETED);
-                    // Lấy URL đầu tiên thành công làm S3Url chính
-                    String firstSuccessUrl = metadataList.stream()
-                            .filter(metadata -> metadata.getCdnUrl() != null && !metadata.getCdnUrl().isEmpty())
-                            .findFirst()
-                            .map(ImageMetadata::getCdnUrl)
-                            .orElse("");
-                    job.setS3Url(firstSuccessUrl);
-                    job.setErrorMessage(null);
-                } else {
-                    job.setStatus(JobStatus.FAILED);
-                    job.setErrorMessage("Tất cả URLs đều xử lý thất bại");
-                }
-            } else {
-                job.setStatus(JobStatus.FAILED);
-                job.setErrorMessage("Không tìm thấy metadata của ảnh đã xử lý.");
-            }
+        // Cập nhật trạng thái
+        if (job.getProcessedImages() < job.getTotalImages()) {
+            job.setStatus("PROCESSING");
         } else {
-            // Vẫn đang xử lý, giữ nguyên status PENDING
-            job.setStatus(JobStatus.PENDING);
+            job.setStatus("COMPLETED");
+            log.info("Job {} đã hoàn thành xử lý tất cả {} ảnh.", jobId, job.getTotalImages());
         }
 
+        // Lưu lại thay đổi vào cơ sở dữ liệu
         uploadJobRepository.save(job);
-        log.info("Updated job {} status to {} (processed: {}/{})", 
-                jobId, job.getStatus(), job.getProcessedUrls(), job.getTotalUrls());
+        log.debug("Đã cập nhật Job {}: {}/{} ảnh đã xử lý.", jobId, job.getProcessedImages(), job.getTotalImages());
     }
 
-    /**
-     * Lấy tất cả các job của user hiện tại
-     * @param username User cần lấy danh sách job
-     * @return Danh sách các JobStatusResponse chứa thông tin job và URL CDN
-     */
-    public List<JobStatusResponse> getUserJobs(String username) {
-        List<UploadJob> userJobs = uploadJobRepository.findByUsername(username);
-        return userJobs.stream()
-                .map(JobStatusResponse::fromJob)
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Lấy danh sách tất cả các URL CDN đã upload thành công của user
-     * @param username User cần lấy danh sách URL CDN
-     * @return Danh sách các URL CDN đã upload thành công
-     */
-    public List<String> getUserCdnUrls(String username) {
-        List<UploadJob> userJobs = uploadJobRepository.findByUsername(username);
-        return userJobs.stream()
-                .filter(job -> job.getImageMetadataList() != null)
-                .flatMap(job -> job.getImageMetadataList().stream())
-                .filter(metadata -> metadata.getCdnUrl() != null && !metadata.getCdnUrl().isEmpty())
-                .map(ImageMetadata::getCdnUrl)
-                .distinct()
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Lấy danh sách chi tiết tất cả các URL CDN đã upload thành công của user
-     * @param username User cần lấy danh sách URL CDN chi tiết
-     * @return Danh sách các CdnUrlResponse chứa thông tin chi tiết về URL CDN
-     */
-    public List<CdnUrlResponse> getUserDetailedCdnUrls(String username) {
-        List<UploadJob> userJobs = uploadJobRepository.findByUsername(username);
-        return userJobs.stream()
-                .filter(job -> job.getImageMetadataList() != null)
-                .flatMap(job -> job.getImageMetadataList().stream())
-                .filter(metadata -> metadata.getCdnUrl() != null && !metadata.getCdnUrl().isEmpty())
-                .map(CdnUrlResponse::fromImageMetadata)
-                .collect(Collectors.toList());
-    }
-    
-    /**
-     * Handler cho AWS Lambda: nhận UploadRequest, tạo job, trả về JobStatusResponse
-     */
-    public JobStatusResponse handleUpload(UploadRequest uploadRequest) {
-        // Có thể hardcode username hoặc lấy từ uploadRequest nếu cần
-        String username = "lambda-user";
-        Long jobId = createJob(uploadRequest, username);
-        return getJobStatus(jobId.toString());
+    @Data
+    @AllArgsConstructor
+    private static class SqsMessagePayload {
+        private Long jobId;
+        private String imageUrl;
     }
 }

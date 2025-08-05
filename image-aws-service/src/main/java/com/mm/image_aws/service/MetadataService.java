@@ -10,12 +10,15 @@ import com.drew.metadata.png.PngDirectory;
 import com.mm.image_aws.entity.ImageMetadata;
 import com.mm.image_aws.entity.UploadJob;
 import com.mm.image_aws.repo.ImageMetadataRepository;
-import com.mm.image_aws.repo.UploadJobRepository; // Thêm repository này
+import com.mm.image_aws.repo.UploadJobRepository;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.io.ByteArrayInputStream;
+import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
@@ -23,39 +26,37 @@ import java.io.ByteArrayInputStream;
 public class MetadataService {
 
     private final ImageMetadataRepository imageMetadataRepository;
-    private final UploadJobRepository uploadJobRepository; // Thêm dependency
+    private final UploadJobRepository uploadJobRepository;
 
-    /**
-     * [SỬA LỖI] Thay đổi phương thức để nhận jobId (Long) thay vì đối tượng UploadJob.
-     */
+    @Transactional
     public void extractAndSaveMetadata(Long jobId, String originalUrl, String cdnUrl, byte[] imageBytes, String errorMessage) {
         // Lấy một tham chiếu (reference) tới job mà không cần tải toàn bộ entity
         UploadJob jobReference = uploadJobRepository.getReferenceById(jobId);
 
         ImageMetadata imageMeta = new ImageMetadata();
-        imageMeta.setUploadJob(jobReference); // Gán mối quan hệ
+        imageMeta.setJob(jobReference); // Đổi tên từ setUploadJob
         imageMeta.setOriginalUrl(originalUrl);
         imageMeta.setCdnUrl(cdnUrl);
+        imageMeta.setCreatedAt(LocalDateTime.now());
 
-        // Chỉ gán fileSize nếu imageBytes không rỗng
         if (imageBytes != null && imageBytes.length > 0) {
-            imageMeta.setFileSize((long) imageBytes.length);
+            imageMeta.setFileSize(imageBytes.length);
         }
 
         if (errorMessage != null) {
-            imageMeta.setErrorMessage(errorMessage.substring(0, Math.min(errorMessage.length(), 255)));
+            // Cắt ngắn message nếu nó quá dài so với cột trong DB
+            imageMeta.setErrorMessage(errorMessage.substring(0, Math.min(errorMessage.length(), 512)));
         }
 
-        // Chỉ trích xuất metadata nếu có dữ liệu ảnh
         if (imageBytes != null && imageBytes.length > 0) {
             try (ByteArrayInputStream inputStream = new ByteArrayInputStream(imageBytes)) {
                 Metadata metadata = ImageMetadataReader.readMetadata(inputStream);
                 extractDimensions(imageMeta, metadata);
                 extractDpi(imageMeta, metadata);
             } catch (Exception e) {
-                log.error("Lỗi nghiêm trọng khi trích xuất metadata cho URL {}: {}", originalUrl, e.getMessage());
+                log.error("Lỗi khi trích xuất metadata cho URL {}: {}", originalUrl, e.getMessage());
                 if (imageMeta.getErrorMessage() == null) {
-                    imageMeta.setErrorMessage(("Lỗi trích xuất: " + e.getMessage()).substring(0, 255));
+                    imageMeta.setErrorMessage(("Lỗi trích xuất: " + e.getMessage()).substring(0, Math.min(e.getMessage().length(), 512)));
                 }
             }
         }
@@ -69,6 +70,7 @@ public class MetadataService {
             for (Tag tag : directory.getTags()) {
                 String tagName = tag.getTagName().toLowerCase();
                 int tagType = tag.getTagType();
+                // So sánh với null sẽ hoạt động vì width/height giờ là Integer
                 if (imageMeta.getWidth() == null && tagName.contains("width")) {
                     try { imageMeta.setWidth(directory.getInteger(tagType)); } catch (Exception e) { /* Bỏ qua */ }
                 }
@@ -87,8 +89,8 @@ public class MetadataService {
                 if (jfifDir.containsTag(JfifDirectory.TAG_RESX) && jfifDir.getInt(JfifDirectory.TAG_RESX) > 0) {
                     int resX = jfifDir.getInt(JfifDirectory.TAG_RESX);
                     int units = jfifDir.getInt(JfifDirectory.TAG_UNITS);
-                    if (units == 1) { imageMeta.setDpi(resX); return; }
-                    if (units == 2) { imageMeta.setDpi((int) Math.round(resX * 2.54)); return; }
+                    if (units == 1) { imageMeta.setDpi(resX); return; } // DPI
+                    if (units == 2) { imageMeta.setDpi((int) Math.round(resX * 2.54)); return; } // DPCm
                 }
             } catch (Exception e) { log.warn("Lỗi đọc DPI từ JFIF: {}", e.getMessage()); }
         }
@@ -98,9 +100,9 @@ public class MetadataService {
         if (exifDir != null && exifDir.containsTag(ExifIFD0Directory.TAG_X_RESOLUTION)) {
             try {
                 double xResolution = exifDir.getRational(ExifIFD0Directory.TAG_X_RESOLUTION).doubleValue();
-                int unit = exifDir.containsTag(ExifIFD0Directory.TAG_RESOLUTION_UNIT) ? exifDir.getInteger(ExifIFD0Directory.TAG_RESOLUTION_UNIT) : 2;
-                if (unit == 3) { imageMeta.setDpi((int) Math.round(xResolution * 2.54)); }
-                else { imageMeta.setDpi((int) Math.round(xResolution)); }
+                int unit = exifDir.containsTag(ExifIFD0Directory.TAG_RESOLUTION_UNIT) ? exifDir.getInteger(ExifIFD0Directory.TAG_RESOLUTION_UNIT) : 2; // Default to inches
+                if (unit == 3) { imageMeta.setDpi((int) Math.round(xResolution * 2.54)); } // Centimeters
+                else { imageMeta.setDpi((int) Math.round(xResolution)); } // Inches
                 return;
             } catch (Exception e) { log.warn("Lỗi đọc DPI từ EXIF: {}", e.getMessage()); }
         }
@@ -111,8 +113,9 @@ public class MetadataService {
             try {
                 Integer pixelsPerUnitX = pngDir.getInteger(PngDirectory.TAG_PIXELS_PER_UNIT_X);
                 Integer unitSpecifier = pngDir.getInteger(PngDirectory.TAG_UNIT_SPECIFIER);
+                // 1 = meters
                 if (pixelsPerUnitX != null && unitSpecifier != null && unitSpecifier == 1) {
-                    imageMeta.setDpi((int) Math.round(pixelsPerUnitX * 0.0254));
+                    imageMeta.setDpi((int) Math.round(pixelsPerUnitX * 0.0254)); // Pixels per meter to DPI
                 }
             } catch (Exception e) { log.warn("Lỗi đọc DPI từ PNG: {}", e.getMessage()); }
         }

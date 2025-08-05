@@ -1,0 +1,27 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  LeadsGen - User Service
+
+Resources:
+  UserServiceApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: build/libs/user-service-0.0.1-SNAPSHOT.jar
+      Handler: com.mm.user.StreamLambdaHandler
+      Runtime: java17
+      MemorySize: 1024
+      Timeout: 30
+      SnapStart:
+        ApplyOn: PublishedVersions
+      AutoPublishAlias: live
+      Environment:
+        Variables:
+          SPRING_DATASOURCE_URL: "jdbc:oracle:thin:@your-rds-proxy-endpoint..."
+          SPRING_DATASOURCE_USERNAME: "your_user"
+          JWT_SECRET: "your_super_secret_key"
+      Policies:
+        - VPCAccessPolicy: {} # Cần để truy cập DB trong VPC
+      Events:
+        HttpApi:
+          Type: HttpApi
