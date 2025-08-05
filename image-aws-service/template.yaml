@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  LeadsGen - Image AWS Service. This stack deploys the API and the image processing backend.
+  LeadsGen - Image AWS Service (DynamoDB Version). This stack deploys the API and the image processing backend.
 
 Globals:
   Function:
@@ -12,13 +12,11 @@ Globals:
       - x86_64
 
 Resources:
-  # Quay lại dùng SQS Standard cho đơn giản, xóa các thuộc tính FIFO
   ImageProcessingQueue:
     Type: AWS::SQS::Queue
     Properties:
-      VisibilityTimeout: 400 # Giữ lại cấu hình này, nó đã đúng
+      VisibilityTimeout: 400
 
-  # Xóa BucketName để CloudFormation tự tạo tên duy nhất
   ImagesBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -27,6 +25,23 @@ Resources:
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
+
+  # === THÊM MỚI: Định nghĩa bảng DynamoDB ===
+  ImageServiceTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: ImageServiceTable
+      AttributeDefinitions:
+        - AttributeName: "PK" # Partition Key: USER#{username} hoặc JOB#{jobId}
+          AttributeType: "S"
+        - AttributeName: "SK" # Sort Key: JOB#{jobId} hoặc IMAGE#{imageId}
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "PK"
+          KeyType: "HASH"
+        - AttributeName: "SK"
+          KeyType: "RANGE"
+      BillingMode: PAY_PER_REQUEST # Tối ưu chi phí cho serverless
 
   ImageApiFunction:
     Type: AWS::Serverless::Function
@@ -37,12 +52,15 @@ Resources:
       Environment:
         Variables:
           AWS_SQS_QUEUE_URL: !Ref ImageProcessingQueue
-          # Tạm thời comment out các biến DB để deploy thành công
-          # SPRING_DATASOURCE_URL: jdbc:oracle:thin:@//YOUR_RDS_ENDPOINT:1521/yourdb
-          # SPRING_DATASOURCE_USERNAME: root
-          JWT_SECRET: "10f09f2ed799b94e868ee03ade7ec988dbe04af25d6d2b661c64b4aac4725c98dae559a48e5c06004eeed78af816a0b74bfdbab7a19ef11a9f325f9d12d54d99"
+          # --- XÓA CÁC BIẾN MÔI TRƯỜNG CŨ CỦA DB ---
+          # SPRING_DATASOURCE_URL: ...
+          # SPRING_DATASOURCE_USERNAME: ...
+          JWT_SECRET: "dummy-secret-not-used-anymore" # Giữ lại để tránh lỗi khởi tạo nếu code cũ còn sót
           AWS_BUCKET: !Ref ImagesBucket
           AWS_CDN_DOMAIN: d69wruydw34fj.cloudfront.net
+          # === THÊM MỚI: Biến môi trường cho DynamoDB và JWKS ===
+          DYNAMODB_TABLE_NAME: !Ref ImageServiceTable
+          AUTH_JWKS_URL: "https://your-auth-server.com/.well-known/jwks.json" # THAY THẾ BẰNG URL THỰC TẾ
       Policies:
         - Statement:
             - Effect: Allow
@@ -51,6 +69,9 @@ Resources:
               Resource: !GetAtt ImageProcessingQueue.Arn
         - S3ReadPolicy:
             BucketName: !Ref ImagesBucket
+        # === THÊM MỚI: Cấp quyền truy cập DynamoDB ===
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ImageServiceTable
       Events:
         HttpApi:
           Type: HttpApi
@@ -62,11 +83,19 @@ Resources:
       Handler: com.mm.image_aws.handler.ImageProcessorHandler::handleRequest
       Timeout: 300
       MemorySize: 1536
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref ImageServiceTable
+          AWS_BUCKET: !Ref ImagesBucket
+          AWS_CDN_DOMAIN: d69wruydw34fj.cloudfront.net
       Policies:
         - SQSPollerPolicy:
             QueueName: !GetAtt ImageProcessingQueue.Arn
         - S3CrudPolicy:
             BucketName: !Ref ImagesBucket
+        # === THÊM MỚI: Cấp quyền truy cập DynamoDB ===
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ImageServiceTable
       Events:
         SQSEvent:
           Type: SQS

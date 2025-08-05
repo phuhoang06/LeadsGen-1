@@ -7,13 +7,13 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.web.client.RestTemplate;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
+import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
 import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.s3.S3AsyncClient; // THÊM IMPORT
-import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
+import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.sqs.SqsAsyncClient;
-import software.amazon.awssdk.transfer.s3.S3TransferManager; // THÊM IMPORT
+import software.amazon.awssdk.transfer.s3.S3TransferManager;
 
 @Configuration
 @EnableConfigurationProperties(AwsProperties.class)
@@ -23,26 +23,12 @@ public class AppConfig {
     private String awsRegion;
 
     @Bean
-    public RestTemplate restTemplate() {
-        return new RestTemplate();
-    }
-
-    @Bean
     public CloseableHttpAsyncClient httpAsyncClient() {
         CloseableHttpAsyncClient client = HttpAsyncClients.createDefault();
         client.start();
         return client;
     }
 
-    @Bean
-    public S3Client s3Client() {
-        return S3Client.builder()
-                .region(Region.of(awsRegion))
-                .credentialsProvider(DefaultCredentialsProvider.create())
-                .build();
-    }
-
-    // [THÊM MỚI] Bean S3AsyncClient cần thiết cho S3TransferManager
     @Bean
     public S3AsyncClient s3AsyncClient() {
         return S3AsyncClient.builder()
@@ -51,7 +37,6 @@ public class AppConfig {
                 .build();
     }
 
-    // [THÊM MỚI] Bean S3TransferManager để quản lý việc tải file lên S3
     @Bean
     public S3TransferManager s3TransferManager(S3AsyncClient s3AsyncClient) {
         return S3TransferManager.builder()
@@ -67,8 +52,28 @@ public class AppConfig {
                 .build();
     }
 
+    // === THÊM MỚI: Beans cho DynamoDB ===
+    @Bean
+    public DynamoDbClient dynamoDbClient() {
+        return DynamoDbClient.builder()
+                .region(Region.of(awsRegion))
+                .credentialsProvider(DefaultCredentialsProvider.create())
+                .build();
+    }
+
+    @Bean
+    public DynamoDbEnhancedClient dynamoDbEnhancedClient(DynamoDbClient dynamoDbClient) {
+        return DynamoDbEnhancedClient.builder()
+                .dynamoDbClient(dynamoDbClient)
+                .build();
+    }
+    // ===================================
+
     @Bean
     public ObjectMapper objectMapper() {
-        return new ObjectMapper();
+        // Cấu hình để không serialize các giá trị null
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.findAndRegisterModules(); // Hỗ trợ Java 8 Date/Time
+        return mapper;
     }
 }

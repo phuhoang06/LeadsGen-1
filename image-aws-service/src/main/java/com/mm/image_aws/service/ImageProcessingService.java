@@ -1,6 +1,5 @@
 package com.mm.image_aws.service;
 
-import com.mm.image_aws.dto.DownloadedImage;
 import com.mm.image_aws.exception.FileTooLargeException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -8,10 +7,8 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import com.mm.image_aws.dto.JobStatus;
 
 @Service
 @Slf4j
@@ -22,10 +19,11 @@ public class ImageProcessingService {
     private final MetadataService metadataService;
     private final UploadJobService uploadJobService;
 
+    // Sử dụng @Lazy để tránh lỗi circular dependency có thể xảy ra
     public ImageProcessingService(ImageDownloaderService downloaderService,
                                   S3StorageService s3StorageService,
                                   MetadataService metadataService,
-                                  @Lazy UploadJobService uploadJobService) { // <-- Thêm @Lazy ở đây
+                                  @Lazy UploadJobService uploadJobService) {
         this.downloaderService = downloaderService;
         this.s3StorageService = s3StorageService;
         this.metadataService = metadataService;
@@ -35,84 +33,43 @@ public class ImageProcessingService {
     private static final Map<String, String> CONTENT_TYPE_TO_EXTENSION_MAP = Map.ofEntries(
             Map.entry("image/jpeg", ".jpg"),
             Map.entry("image/png", ".png"),
-            Map.entry("image/gif", ".gif")
+            Map.entry("image/gif", ".gif"),
+            Map.entry("image/webp", ".webp")
     );
 
     @Async("taskExecutor")
-    // Bỏ @Transactional ở đây để mỗi service con tự quản lý transaction của nó
-    public void processImage(Long jobId, String imageUrl) {
-        final byte[][] imageBytesHolder = {null};
-
+    public void processImage(String jobId, String username, String imageUrl) {
         downloaderService.downloadImage(imageUrl)
                 .thenCompose(downloadedImage -> {
-                    imageBytesHolder[0] = downloadedImage.getContent();
                     String contentType = downloadedImage.getContentType();
                     String extension = CONTENT_TYPE_TO_EXTENSION_MAP.getOrDefault(contentType, ".jpg");
-                    String fileName = UUID.randomUUID().toString() + extension;
+                    String s3Key = UUID.randomUUID().toString() + extension;
 
-                    return s3StorageService.upload(fileName, contentType, downloadedImage.getContent())
-                            .thenApply(completedUpload -> {
-                                String cdnUrl = s3StorageService.buildS3PublicUrl(fileName);
+                    return s3StorageService.upload(s3Key, contentType, downloadedImage.getContent())
+                            .thenAccept(completedUpload -> {
+                                String cdnUrl = s3StorageService.buildS3PublicUrl(s3Key);
                                 // Khi thành công, gọi metadata service với đầy đủ thông tin
-                                metadataService.extractAndSaveMetadata(jobId, imageUrl, cdnUrl, downloadedImage.getContent(), null);
-                                return cdnUrl;
+                                metadataService.extractAndSaveMetadata(jobId, username, imageUrl, cdnUrl, s3Key, downloadedImage.getContent(), null);
                             });
                 })
                 .whenComplete((result, throwable) -> {
                     if (throwable != null) {
-                        // THÊM MỚI: Xử lý FileTooLargeException một cách riêng biệt
+                        String errorMessage;
                         if (throwable.getCause() instanceof FileTooLargeException) {
-                            FileTooLargeException fileTooLargeException = (FileTooLargeException) throwable.getCause();
-                            String errorMessage = String.format(
-                                "File quá lớn: %s (giới hạn: %s) - URL: %s", 
-                                fileTooLargeException.getFileSizeMB(), 
-                                fileTooLargeException.getMaxFileSizeMB(), 
-                                imageUrl
-                            );
-                            
-                            log.warn("Bỏ qua file quá lớn: {}", errorMessage);
-                            
-                            // Lưu metadata với thông tin lỗi file quá lớn
-                            metadataService.extractAndSaveMetadata(jobId, imageUrl, null, null, errorMessage);
-                            
-                            // Cập nhật job status (vẫn tính là processed nhưng thất bại)
-                            uploadJobService.updateJobAfterProcessing(jobId);
-                                                 } else {
-                             // Xử lý các lỗi khác như bình thường
-                             log.error("Xử lý thất bại cho URL {}: {}", imageUrl, throwable.getMessage());
-                             metadataService.extractAndSaveMetadata(jobId, imageUrl, null, null, throwable.getMessage());
-                             uploadJobService.updateJobAfterProcessing(jobId);
-                         }
-                     } else {
-                         log.info("Xử lý thành công URL: {}", imageUrl);
-                         uploadJobService.updateJobAfterProcessing(jobId);
-                     }
+                            FileTooLargeException ex = (FileTooLargeException) throwable.getCause();
+                            errorMessage = String.format("File quá lớn: %s (giới hạn: %s)", ex.getFileSizeMB(), ex.getMaxFileSizeMB());
+                            log.warn("{} - URL: {}", errorMessage, imageUrl);
+                        } else {
+                            errorMessage = throwable.getMessage();
+                            log.error("Xử lý thất bại cho URL {}: {}", imageUrl, errorMessage);
+                        }
+                        // Dù lỗi gì cũng lưu lại metadata với thông báo lỗi
+                        metadataService.extractAndSaveMetadata(jobId, username, imageUrl, null, null, null, errorMessage);
+                    } else {
+                        log.info("Xử lý thành công URL: {}", imageUrl);
+                    }
+                    // Luôn cập nhật trạng thái job sau khi xử lý xong (thành công hoặc thất bại)
+                    uploadJobService.updateJobAfterProcessing(username, jobId);
                 });
-    }
-
-    @Async("taskExecutor")
-    public void processMultipleImages(Long jobId, List<String> imageUrls) {
-        log.info("Bắt đầu xử lý {} URLs cho job {}", imageUrls.size(), jobId);
-        
-        // Xử lý song song tất cả URLs
-        imageUrls.parallelStream().forEach(imageUrl -> {
-            try {
-                processImage(jobId, imageUrl);
-            } catch (Exception e) {
-                                 log.error("Lỗi khi xử lý URL {}: {}", imageUrl, e.getMessage());
-                 // Vẫn cập nhật job status để đảm bảo không bị treo
-                 uploadJobService.updateJobAfterProcessing(jobId);
-            }
-        });
-    }
-
-    /**
-     * Handler cho AWS Lambda: nhận JobStatus từ SQS, xử lý job tương ứng
-     */
-    public Object processJob(JobStatus jobStatus) {
-        // TODO: Xử lý logic thực tế dựa trên jobStatus
-        log.info("Received jobStatus from SQS: {}", jobStatus);
-        // Có thể gọi processImage/processMultipleImages nếu cần
-        return "OK";
     }
 }

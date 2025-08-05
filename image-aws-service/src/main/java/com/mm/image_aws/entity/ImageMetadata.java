@@ -1,55 +1,46 @@
 package com.mm.image_aws.entity;
 
-import jakarta.persistence.*;
 import lombok.Data;
-import lombok.ToString;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbAttribute;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbSortKey;
 
-import java.time.LocalDateTime;
-
-@Entity
-@Table(name = "image_metadata")
+@DynamoDbBean
 @Data
 public class ImageMetadata {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "metadata_id")
-    private Long metadataId;
+    private String pk; // Partition Key: JOB#{jobId}
+    private String sk; // Sort Key: IMAGE#{s3Key}
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "job_id", nullable = false)
-    @ToString.Exclude
-    private UploadJob job;
-
-    @Column(name = "original_url", length = 2048)
+    private String jobId;
+    private String username; // Thêm username để truy vấn dễ hơn
     private String originalUrl;
-
-    @Column(name = "cdn_url", length = 2048)
     private String cdnUrl;
-
-    @Column(name = "s3_key")
     private String s3Key;
-
-    private String format; // e.g., JPEG, PNG
-
-    // [SỬA LỖI] Thay đổi từ 'int' thành 'Integer' để cho phép giá trị null
-    @Column(name = "width")
+    private String format;
     private Integer width;
-
-    @Column(name = "height")
     private Integer height;
-
-    @Column(name = "file_size")
-    private long fileSize; // in bytes
-
-    // [THÊM MỚI] Bổ sung trường DPI
-    @Column(name = "dpi")
+    private Long fileSize; // in bytes
     private Integer dpi;
-
-    // [THÊM MỚI] Bổ sung trường để lưu thông báo lỗi
-    @Column(name = "error_message", length = 512)
     private String errorMessage;
+    private String createdAt;
 
-    @Column(name = "created_at", nullable = false)
-    private LocalDateTime createdAt = LocalDateTime.now(); // Gán giá trị mặc định
+    @DynamoDbPartitionKey
+    @DynamoDbAttribute("PK")
+    public String getPk() {
+        return "JOB#" + this.jobId;
+    }
+    public void setPk(String pk) {
+        // Setter này cần thiết cho DynamoDB enhanced client
+    }
+
+    @DynamoDbSortKey
+    @DynamoDbAttribute("SK")
+    public String getSk() {
+        return "IMAGE#" + this.s3Key;
+    }
+    public void setSk(String sk) {
+        // Setter này cần thiết cho DynamoDB enhanced client
+    }
 }

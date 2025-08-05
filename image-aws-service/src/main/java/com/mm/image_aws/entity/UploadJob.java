@@ -1,40 +1,42 @@
 package com.mm.image_aws.entity;
 
-import jakarta.persistence.*;
 import lombok.Data;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbAttribute;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbSortKey;
 
-import java.time.LocalDateTime;
-import java.util.List;
-
-@Entity
-@Table(name = "upload_jobs")
+@DynamoDbBean
 @Data
 public class UploadJob {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "job_id")
-    private Long jobId;
 
-    @Column(nullable = false)
+    private String pk; // Partition Key: USER#{username}
+    private String sk; // Sort Key: JOB#{jobId}
+
+    private String jobId;
     private String username;
-
-    // === SỬA LỖI: Đổi tên trường theo quy ước camelCase ===
-    @Column(name = "total_images", nullable = false)
     private int totalImages;
-
-    @Column(name = "processed_images", nullable = false)
     private int processedImages;
-    // =======================================================
+    private String status;
+    private String createdAt;
+    private String updatedAt;
 
-    @Column(nullable = false)
-    private String status; // e.g., PENDING, PROCESSING, COMPLETED, FAILED
+    @DynamoDbPartitionKey
+    @DynamoDbAttribute("PK")
+    public String getPk() {
+        return "USER#" + this.username;
+    }
+    public void setPk(String pk) {
+        // Setter này cần thiết cho DynamoDB enhanced client, nhưng chúng ta sẽ không gọi nó trực tiếp
+    }
 
-    @Column(name = "created_at", nullable = false)
-    private LocalDateTime createdAt;
 
-    @Column(name = "updated_at", nullable = false)
-    private LocalDateTime updatedAt;
-
-    @OneToMany(mappedBy = "job", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<ImageMetadata> imageMetadata;
+    @DynamoDbSortKey
+    @DynamoDbAttribute("SK")
+    public String getSk() {
+        return "JOB#" + this.jobId;
+    }
+    public void setSk(String sk) {
+        // Setter này cần thiết cho DynamoDB enhanced client
+    }
 }

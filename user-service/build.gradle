@@ -1,113 +1,49 @@
 plugins {
     id 'java'
-    id 'org.springframework.boot' version '3.3.1'
-    id 'io.spring.dependency-management' version '1.1.5'
+    id 'org.springframework.boot' version '3.2.5' // Sử dụng phiên bản Spring Boot mới nhất
+    id 'io.spring.dependency-management' version '1.1.4'
 }
 
-group = 'com.MM'
+group = 'com.mm'
 version = '0.0.1-SNAPSHOT'
 
 java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(17)
-    }
+    sourceCompatibility = '17'
 }
 
 repositories {
     mavenCentral()
 }
 
+// Import BOM (Bill of Materials) của Spring Cloud AWS để quản lý phiên bản
 dependencyManagement {
     imports {
-        mavenBom "software.amazon.awssdk:bom:2.25.64"
+        mavenBom "io.awspring.cloud:spring-cloud-aws-dependencies:3.1.1"
     }
-}
-
-configurations.all {
-    exclude group: 'commons-logging', module: 'commons-logging'
 }
 
 dependencies {
-    // Spring Web & Security
+    // Dependency chính cho web
     implementation 'org.springframework.boot:spring-boot-starter-web'
+
+    // Tích hợp Spring Cloud AWS và DynamoDB
+    implementation 'io.awspring.cloud:spring-cloud-aws-starter'
+    implementation 'io.awspring.cloud:spring-cloud-aws-starter-dynamodb'
+
+    // Adapter để chạy Spring Boot trên AWS Lambda
+    implementation 'com.amazonaws.serverless:aws-serverless-java-container-springboot3:2.0.1'
+
+    // Dependencies cho Spring Security và xác thực JWT qua JWKS
     implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
 
-    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    // Xóa các dependency cũ sau đây nếu có:
+    // implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    // runtimeOnly 'com.oracle.database.jdbc:ojdbc11'
 
-    // === Spring Data Redis ===
-    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
-
-    // Spring Data JPA & Oracle Driver
-    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-    runtimeOnly 'com.oracle.database.jdbc:ojdbc11'
-
-    // Thư viện trích xuất metadata từ ảnh
-    implementation 'com.drewnoakes:metadata-extractor:2.18.0'
-
-    // AWS S3
-    implementation 'software.amazon.awssdk:s3-transfer-manager'
-    implementation 'software.amazon.awssdk:netty-nio-client'
-    implementation 'software.amazon.awssdk.crt:aws-crt:0.29.17'
-
-    // Apache HttpClient
-    implementation 'org.apache.httpcomponents.client5:httpclient5:5.2.1'
-
-    // Thư viện JWT
-    implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
-    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.11.5'
-    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.11.5'
-
-    // Lombok và Jackson
-    compileOnly 'org.projectlombok:lombok'
-    annotationProcessor 'org.projectlombok:lombok'
-    implementation 'com.fasterxml.jackson.core:jackson-databind'
-
-    // === THÊM MỚI: Thư viện JavaFaker để tạo dữ liệu mẫu ===
-    implementation('com.github.javafaker:javafaker:1.0.2') {
-        exclude group: 'org.yaml', module: 'snakeyaml'
-    }
-
-    // CSV Processing
-    implementation 'com.opencsv:opencsv:5.7.1'
-    implementation 'org.apache.commons:commons-csv:1.10.0'
-    
-    // Performance Monitoring
-    implementation 'org.springframework.boot:spring-boot-starter-actuator'
-    
-    // Test
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    testImplementation 'org.springframework.security:spring-security-test'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 tasks.named('test') {
     useJUnitPlatform()
-}
-
-// Cấu hình cho việc đóng gói ứng dụng
-bootJar {
-    archiveFileName = "${project.name}.${archiveExtension.get()}"
-}
-
-// Tối ưu hóa build
-compileJava {
-    options.compilerArgs << '-parameters'
-    options.encoding = 'UTF-8'
-}
-
-tasks.withType(JavaCompile) {
-    options.encoding = 'UTF-8'
-}
-
-// Cấu hình cho việc chạy ứng dụng
-bootRun {
-    systemProperties = System.properties
-    jvmArgs = [
-        '-Xms512m',
-        '-Xmx2g',
-        '-XX:+UseG1GC',
-        '-XX:MaxGCPauseMillis=200',
-        '-XX:InitiatingHeapOccupancyPercent=35',
-        '-Dfile.encoding=UTF-8'
-    ]
 }

@@ -2,6 +2,7 @@ package com.mm.image_aws.controller;
 
 import com.mm.image_aws.dto.CdnUrlResponse;
 import com.mm.image_aws.dto.JobStatusResponse;
+import com.mm.image_aws.dto.JobSubmissionResponse; // THÊM MỚI
 import com.mm.image_aws.dto.UploadRequest;
 import com.mm.image_aws.service.UploadJobService;
 import lombok.RequiredArgsConstructor;
@@ -10,9 +11,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api")
@@ -22,15 +21,16 @@ public class UploadController {
     private final UploadJobService uploadJobService;
 
     @PostMapping("/upload")
-    public ResponseEntity<Map<String, Long>> submitJob(@RequestBody UploadRequest uploadRequest, @AuthenticationPrincipal UserDetails userDetails) {
-        Long jobId = uploadJobService.createJob(uploadRequest, userDetails.getUsername());
-        return ResponseEntity.ok(Collections.singletonMap("jobId", jobId));
+    public ResponseEntity<JobSubmissionResponse> submitJob(@RequestBody UploadRequest uploadRequest, @AuthenticationPrincipal UserDetails userDetails) {
+        String jobId = uploadJobService.createJob(uploadRequest, userDetails.getUsername());
+        // SỬ DỤNG DTO MỚI ĐỂ PHẢN HỒI
+        return ResponseEntity.ok(new JobSubmissionResponse(jobId));
     }
 
     @GetMapping("/status/{jobId}")
-    // === SỬA LỖI: Đổi kiểu dữ liệu của jobId từ String thành Long ===
-    public ResponseEntity<JobStatusResponse> getJobStatus(@PathVariable Long jobId) {
-        return ResponseEntity.ok(uploadJobService.getJobStatus(jobId));
+    public ResponseEntity<JobStatusResponse> getJobStatus(@PathVariable String jobId, @AuthenticationPrincipal UserDetails userDetails) {
+        JobStatusResponse status = uploadJobService.getJobStatus(userDetails.getUsername(), jobId);
+        return ResponseEntity.ok(status);
     }
 
     @GetMapping("/jobs")
@@ -48,3 +48,4 @@ public class UploadController {
         return ResponseEntity.ok(uploadJobService.getUserDetailedCdnUrls(userDetails.getUsername()));
     }
 }
+

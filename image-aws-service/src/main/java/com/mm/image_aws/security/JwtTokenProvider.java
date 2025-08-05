@@ -1,92 +1,69 @@
 package com.mm.image_aws.security;
 
-import com.mm.image_aws.entity.User;
-import io.jsonwebtoken.*;
-import io.jsonwebtoken.security.Keys;
-import io.jsonwebtoken.security.SignatureException;
-import jakarta.annotation.PostConstruct;
+import com.auth0.jwk.Jwk;
+import com.auth0.jwk.JwkProvider;
+import com.auth0.jwk.UrlJwkProvider;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Header;
+import io.jsonwebtoken.JwsHeader; // THÊM MỚI: Import để sử dụng hằng số KEY_ID
+import io.jsonwebtoken.Jwt;
+import io.jsonwebtoken.Jwts;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.core.env.Environment;
-import org.springframework.security.core.Authentication;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import javax.crypto.SecretKey;
-import java.util.Date;
-import java.util.Objects;
+import java.net.URL;
+import java.security.PublicKey;
 
 @Component
 public class JwtTokenProvider {
 
     private static final Logger logger = LoggerFactory.getLogger(JwtTokenProvider.class);
 
-    private final Environment env;
-    private String jwtSecret;
-    private int jwtExpirationInMs;
-    private SecretKey key;
-
-    // === SỬA LỖI: Inject toàn bộ Environment để đảm bảo đọc được properties ===
-    public JwtTokenProvider(Environment env) {
-        this.env = env;
-    }
-
-    /**
-     * Sử dụng @PostConstruct để đọc properties và tạo key.
-     * Phương thức này chạy sau khi bean được khởi tạo và environment đã sẵn sàng.
-     */
-    @PostConstruct
-    public void init() {
-        this.jwtSecret = Objects.requireNonNull(env.getProperty("jwt.secret"), "jwt.secret must be set in application.properties");
-        this.jwtExpirationInMs = Integer.parseInt(Objects.requireNonNull(env.getProperty("jwt.expiration-ms"), "jwt.expiration-ms must be set in application.properties"));
-        this.key = Keys.hmacShaKeyFor(jwtSecret.getBytes());
-    }
-
-    private SecretKey getSigningKey() {
-        return key;
-    }
-
-    public String generateToken(Authentication authentication) {
-        User userPrincipal = (User) authentication.getPrincipal();
-
-        Date now = new Date();
-        Date expiryDate = new Date(now.getTime() + jwtExpirationInMs);
-
-        return Jwts.builder()
-                .setSubject(userPrincipal.getUsername())
-                .setIssuedAt(new Date())
-                .setExpiration(expiryDate)
-                .signWith(getSigningKey(), SignatureAlgorithm.HS256)
-                .compact();
-    }
+    @Value("${auth.jwks-url}")
+    private String jwksUrl;
 
     public String getUsernameFromJWT(String token) {
-        Claims claims = Jwts.parserBuilder()
-                .setSigningKey(getSigningKey())
-                .build()
-                .parseClaimsJws(token)
-                .getBody();
+        try {
+            Jwt<Header, Claims> untrustedJwt = Jwts.parserBuilder().build().parseClaimsJwt(token.substring(0, token.lastIndexOf('.') + 1));
+            // SỬA LỖI: Sử dụng .get() để lấy 'kid' từ header
+            String kid = (String) untrustedJwt.getHeader().get(JwsHeader.KEY_ID);
 
-        return claims.getSubject();
+            JwkProvider provider = new UrlJwkProvider(new URL(jwksUrl));
+            Jwk jwk = provider.get(kid);
+            PublicKey publicKey = jwk.getPublicKey();
+
+            Claims claims = Jwts.parserBuilder()
+                    .setSigningKey(publicKey)
+                    .build()
+                    .parseClaimsJws(token)
+                    .getBody();
+
+            return claims.getSubject();
+        } catch (Exception e) {
+            logger.error("Could not get username from JWT: {}", e.getMessage());
+            return null;
+        }
     }
 
     public boolean validateToken(String authToken) {
         try {
+            Jwt<Header, Claims> untrustedJwt = Jwts.parserBuilder().build().parseClaimsJwt(authToken.substring(0, authToken.lastIndexOf('.') + 1));
+            // SỬA LỖI: Sử dụng .get() để lấy 'kid' từ header
+            String kid = (String) untrustedJwt.getHeader().get(JwsHeader.KEY_ID);
+
+            JwkProvider provider = new UrlJwkProvider(new URL(jwksUrl));
+            Jwk jwk = provider.get(kid);
+            PublicKey publicKey = jwk.getPublicKey();
+
             Jwts.parserBuilder()
-                    .setSigningKey(getSigningKey())
+                    .setSigningKey(publicKey)
                     .build()
                     .parseClaimsJws(authToken);
             return true;
-        } catch (SignatureException ex) {
-            // SỬA LỖI: Thêm log chi tiết
-            logger.error("Invalid JWT signature: {}", ex.getMessage());
-        } catch (MalformedJwtException ex) {
+        } catch (Exception ex) {
             logger.error("Invalid JWT token: {}", ex.getMessage());
-        } catch (ExpiredJwtException ex) {
-            logger.error("Expired JWT token: {}", ex.getMessage());
-        } catch (UnsupportedJwtException ex) {
-            logger.error("Unsupported JWT token: {}", ex.getMessage());
-        } catch (IllegalArgumentException ex) {
-            logger.error("JWT claims string is empty: {}", ex.getMessage());
         }
         return false;
     }

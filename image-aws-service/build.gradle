@@ -25,7 +25,7 @@ dependencyManagement {
 
 dependencies {
     // Spring Boot Starters
-    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    // implementation 'org.springframework.boot:spring-boot-starter-data-jpa' // ĐÃ XÓA
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
@@ -33,6 +33,7 @@ dependencies {
         exclude group: 'org.springframework.boot', module: 'spring-boot-starter-tomcat'
     }
 
+    // AWS Lambda
     implementation 'com.amazonaws:aws-lambda-java-core:1.2.3'
     implementation 'com.amazonaws:aws-lambda-java-events:3.11.5'
     implementation ('com.amazonaws.serverless:aws-serverless-java-container-springboot3:2.0.1'){
@@ -41,21 +42,28 @@ dependencies {
         exclude group: 'com.fasterxml.jackson.core', module: 'jackson-annotations'
     }
 
-    // AWS SDK v2
+    // === THAY ĐỔI: AWS SDK v2 cho S3, SQS, và DynamoDB ===
     implementation 'software.amazon.awssdk:s3'
     implementation 'software.amazon.awssdk:sqs'
     implementation 'software.amazon.awssdk:s3-transfer-manager'
+    implementation 'software.amazon.awssdk:dynamodb'
+    implementation 'software.amazon.awssdk:dynamodb-enhanced' // Thư viện giúp ánh xạ object dễ dàng hơn
+
+    // === THAY ĐỔI: Thư viện cho xác thực JWT từ bên ngoài ===
+    implementation 'com.auth0:jwks-rsa:0.22.1'
+
 
     implementation 'org.apache.httpcomponents.client5:httpclient5:5.3.1'
     implementation 'com.drewnoakes:metadata-extractor:2.19.0'
     implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
     implementation 'org.imgscalr:imgscalr-lib:4.2'
 
+
     // Runtime & Compile-Only
     runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.11.5'
     runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.11.5'
     compileOnly 'org.projectlombok:lombok'
-    runtimeOnly 'com.oracle.database.jdbc:ojdbc11'
+    // runtimeOnly 'com.oracle.database.jdbc:ojdbc11' // ĐÃ XÓA
     annotationProcessor 'org.projectlombok:lombok'
 
     // Test
@@ -70,5 +78,3 @@ tasks.named('test') {
 tasks.withType(JavaCompile) {
     options.encoding = 'UTF-8'
 }
-
-
