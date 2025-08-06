@@ -84,7 +84,6 @@ public class ImageDownloaderService {
     }
 
     /**
-     * THÊM MỚI: Kiểm tra dung lượng file có vượt quá giới hạn không
      * @param fileSizeBytes Dung lượng file tính bằng bytes
      * @param imageUrl URL của ảnh (để log)
      */

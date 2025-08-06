@@ -12,7 +12,7 @@ public class AwsProperties {
     private String bucket;
     private String cdnDomain;
     
-    // Cấu hình giới hạn dung lượng file (5MB = 5 * 1024 * 1024 bytes)
+
     private long maxFileSize = 5 * 1024 * 1024; // 5MB
     
     // Getter cho maxFileSize
@@ -24,8 +24,7 @@ public class AwsProperties {
     public void setMaxFileSize(long maxFileSize) {
         this.maxFileSize = maxFileSize;
     }
-    
-    // Constant để sử dụng trong code (fallback nếu không có cấu hình)
+
     public static final long MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
     public static final String MAX_FILE_SIZE_MB = "5MB";
 }

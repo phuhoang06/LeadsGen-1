@@ -32,7 +32,6 @@ public class ImageMetadata {
         return "JOB#" + this.jobId;
     }
     public void setPk(String pk) {
-        // Setter này cần thiết cho DynamoDB enhanced client
     }
 
     @DynamoDbSortKey

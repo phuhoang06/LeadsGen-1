@@ -24,8 +24,6 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
-    // --- AuthenticationManager và PasswordEncoder đã được xóa ---
-
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
@@ -33,7 +31,6 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
-                        // .requestMatchers("/api/auth/**").permitAll() // ĐÃ XÓA
                         .anyRequest().authenticated() // Tất cả request đều cần xác thực
                 );
 

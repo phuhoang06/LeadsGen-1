@@ -9,9 +9,7 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 
-/**
- * Service to handle rate limiting logic using Redis.
- */
+
 @Service
 public class RateLimitingService {
 
@@ -26,27 +24,22 @@ public class RateLimitingService {
         this.redisTemplate = redisTemplate;
     }
 
-    /**
-     * Attempts to acquire a permit for a given user ID.
-     *
-     * @param userId The ID of the user trying to make a request.
-     * @return true if the permit was acquired, false otherwise.
-     */
+
     public boolean tryAcquire(String userId) {
         try {
             String key = RATE_LIMIT_PREFIX + userId;
             ValueOperations<String, String> ops = redisTemplate.opsForValue();
 
-            // Increment the key and check the value
+
             Long currentCount = ops.increment(key);
 
-            // If this is the first request in the time window, set the expiration
+
             if (currentCount != null && currentCount == 1) {
                 redisTemplate.expire(key, TIME_WINDOW);
                 logger.debug("Rate limit key created for user: {} with expiration: {} seconds", userId, TIME_WINDOW.getSeconds());
             }
 
-            // Allow the request if the count is within the permitted limit
+
             boolean allowed = currentCount != null && currentCount <= PERMIT_COUNT;
             
             if (allowed) {
@@ -62,9 +55,7 @@ public class RateLimitingService {
         }
     }
 
-    /**
-     * Get remaining time for rate limit reset (for debugging purposes)
-     */
+
     public Long getRemainingTime(String userId) {
         try {
             String key = RATE_LIMIT_PREFIX + userId;

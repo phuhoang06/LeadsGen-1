@@ -67,7 +67,7 @@ public class AppConfig {
                 .dynamoDbClient(dynamoDbClient)
                 .build();
     }
-    // ===================================
+
 
     @Bean
     public ObjectMapper objectMapper() {

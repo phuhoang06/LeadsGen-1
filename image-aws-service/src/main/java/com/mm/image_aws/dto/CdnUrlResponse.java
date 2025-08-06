@@ -7,10 +7,8 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 @Data
-// === SỬA LỖI: Bổ sung các annotation cần thiết ===
 @NoArgsConstructor
 @AllArgsConstructor
-// ===============================================
 public class CdnUrlResponse {
     private Long jobId;
     private String originalUrl;
