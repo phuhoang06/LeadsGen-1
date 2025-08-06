@@ -26,9 +26,5 @@ public class BulkOperationConfig {
     @Min(1)
     private int queueCapacity = 100; // Sức chứa của hàng đợi
 
-    // Lombok sẽ tự động tạo getBatchSize(), getCorePoolSize(), v.v.
-    // Nếu không dùng Lombok, bạn cần tự viết các hàm getter:
-    // public int getBatchSize() {
-    //     return batchSize;
-    // }
+
 }

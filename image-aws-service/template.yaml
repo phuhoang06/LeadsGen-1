@@ -60,7 +60,7 @@ Resources:
           AWS_CDN_DOMAIN: d69wruydw34fj.cloudfront.net
           # === THÊM MỚI: Biến môi trường cho DynamoDB và JWKS ===
           DYNAMODB_TABLE_NAME: !Ref ImageServiceTable
-          AUTH_JWKS_URL: "https://your-auth-server.com/.well-known/jwks.json" # THAY THẾ BẰNG URL THỰC TẾ
+          AUTH_JWKS_URL: "https://ck49kdi05a.execute-api.ap-southeast-2.amazonaws.com/Prod/" # THAY THẾ BẰNG URL THỰC TẾ
       Policies:
         - Statement:
             - Effect: Allow
