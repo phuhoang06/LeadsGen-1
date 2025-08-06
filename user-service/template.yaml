@@ -1,27 +1,89 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  LeadsGen - User Service
+  user-service
+
+  SAM Template for the user-service application
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 1024
 
 Resources:
-  UserServiceApiFunction:
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: users
+      AttributeDefinitions:
+        - AttributeName: "id"
+          AttributeType: "S"
+        - AttributeName: "username"
+          AttributeType: "S"
+        - AttributeName: "email"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "id"
+          KeyType: "HASH"
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      GlobalSecondaryIndexes:
+        - IndexName: "username-index"
+          KeySchema:
+            - AttributeName: "username"
+              KeyType: "HASH"
+          Projection:
+            ProjectionType: "ALL"
+          ProvisionedThroughput:
+            ReadCapacityUnits: 1
+            WriteCapacityUnits: 1
+        - IndexName: "email-index"
+          KeySchema:
+            - AttributeName: "email"
+              KeyType: "HASH"
+          Projection:
+            ProjectionType: "ALL"
+          ProvisionedThroughput:
+            ReadCapacityUnits: 1
+            WriteCapacityUnits: 1
+
+  UserServiceFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: build/libs/user-service-0.0.1-SNAPSHOT.jar
-      Handler: com.mm.user.StreamLambdaHandler
+      CodeUri: .
+      Handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker::handleRequest
       Runtime: java17
-      MemorySize: 1024
-      Timeout: 30
-      SnapStart:
-        ApplyOn: PublishedVersions
-      AutoPublishAlias: live
+      Architectures:
+        - x86_64
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
       Environment:
         Variables:
-          SPRING_DATASOURCE_URL: "jdbc:oracle:thin:@your-rds-proxy-endpoint..."
-          SPRING_DATASOURCE_USERNAME: "your_user"
-          JWT_SECRET: "your_super_secret_key"
-      Policies:
-        - VPCAccessPolicy: {} # Cần để truy cập DB trong VPC
+          SPRING_CLOUD_FUNCTION_DEFINITION: functionRouter
+          JAVA_TOOL_OPTIONS: -XX:+TieredCompilation -XX:TieredStopAtLevel=1
       Events:
-        HttpApi:
-          Type: HttpApi
+        LoginApi:
+          Type: Api
+          Properties:
+            Path: /api/auth/login
+            Method: post
+        RegisterApi:
+          Type: Api
+          Properties:
+            Path: /api/auth/register
+            Method: post
+        ImportUsersApi:
+          Type: Api
+          Properties:
+            Path: /api/import/users
+            Method: post
+
+Outputs:
+  UserServiceApi:
+    Description: "API Gateway endpoint URL for Prod stage for User Service function"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
+  UserServiceFunction:
+    Description: "User Service Lambda Function ARN"
+    Value: !GetAtt UserServiceFunction.Arn

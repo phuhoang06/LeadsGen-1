@@ -1,37 +1,23 @@
 package com.mm.user.dto;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 import java.util.List;
 
-@Data
+@Getter
+@Setter
 @NoArgsConstructor
-@AllArgsConstructor
 public class BulkSignUpResponse {
-    private int totalUsers;
-    private int successCount;
-    private int errorCount;
-    private List<UserResult> results;
-    private String message; // Thêm trường message cho thông báo lỗi
 
-    // Constructor cho trường hợp lỗi
-    public BulkSignUpResponse(String message) {
-        this.message = message;
-        this.totalUsers = 0;
-        this.successCount = 0;
-        this.errorCount = 0;
-        this.results = null;
-    }
+    private String summaryMessage;
+    private long totalRecords;
+    private long successfulCount;
+    private long failedCount;
+    private List<String> failedRecordDetails; // Danh sách chi tiết các dòng bị lỗi
 
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class UserResult {
-        private String username;
-        private String email;
-        private boolean success;
-        private String message;
+    public BulkSignUpResponse(String summaryMessage) {
+        this.summaryMessage = summaryMessage;
     }
 }

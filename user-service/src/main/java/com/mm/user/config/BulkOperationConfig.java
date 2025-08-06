@@ -1,29 +1,34 @@
 package com.mm.user.config;
 
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.scheduling.annotation.EnableAsync;
-import org.springframework.transaction.annotation.EnableTransactionManagement;
 
-import java.util.concurrent.Executor;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.LinkedBlockingQueue;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.validation.annotation.Validated;
+import lombok.Data;
+import jakarta.validation.constraints.Min;
+
 
 @Configuration
-@EnableAsync
-@EnableTransactionManagement
+@ConfigurationProperties(prefix = "bulk.operation")
+@Validated
+@Data // Annotation của Lombok, tự động tạo getters, setters, toString, etc.
 public class BulkOperationConfig {
-    
-    @Bean("bulkOperationExecutor")
-    public Executor bulkOperationExecutor() {
-        return new ThreadPoolExecutor(
-            16, // Tăng core pool size từ 8 lên 16
-            32, // Tăng max pool size từ 16 lên 32
-            60L, // keep alive time
-            TimeUnit.SECONDS,
-            new LinkedBlockingQueue<>(1000), // Tăng work queue từ 500 lên 1000
-            new ThreadPoolExecutor.CallerRunsPolicy() // rejection policy
-        );
-    }
-} 
+
+    @Min(1)
+    private int batchSize = 1000; // Kích thước lô mặc định
+
+    @Min(1)
+    private int corePoolSize = 4; // Số luồng xử lý chính
+
+    @Min(1)
+    private int maxPoolSize = 10; // Số luồng tối đa
+
+    @Min(1)
+    private int queueCapacity = 100; // Sức chứa của hàng đợi
+
+    // Lombok sẽ tự động tạo getBatchSize(), getCorePoolSize(), v.v.
+    // Nếu không dùng Lombok, bạn cần tự viết các hàm getter:
+    // public int getBatchSize() {
+    //     return batchSize;
+    // }
+}

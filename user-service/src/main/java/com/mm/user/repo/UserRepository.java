@@ -1,29 +1,57 @@
 package com.mm.user.repo;
 
+import com.amazonaws.services.dynamodbv2.datamodeling.DynamoDBMapper;
+import com.amazonaws.services.dynamodbv2.datamodeling.DynamoDBQueryExpression;
+import com.amazonaws.services.dynamodbv2.model.AttributeValue;
 import com.mm.user.entity.User;
-import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Repository
-public interface UserRepository extends JpaRepository<User, String> {
+public class UserRepository {
 
-    // --- THAY ĐỔI: Tìm user bằng email hoặc username ---
-    Optional<User> findByUsernameOrEmail(String username, String email);
+    private final DynamoDBMapper dynamoDBMapper;
 
-    // --- THÊM MỚI: Các phương thức kiểm tra sự tồn tại ---
-    Boolean existsByUsername(String username);
-    Boolean existsByEmail(String email);
-    Boolean existsByUsernameOrEmail(String username, String email);
+    public UserRepository(DynamoDBMapper dynamoDBMapper) {
+        this.dynamoDBMapper = dynamoDBMapper;
+    }
 
-    // --- LẤY DANH SÁCH USERNAME VÀ EMAIL ĐÃ TỒN TẠI ---
-    List<User> findByUsernameIn(List<String> usernames);
-    List<User> findByEmailIn(List<String> emails);
+    public User save(User user) {
+        dynamoDBMapper.save(user);
+        return user;
+    }
 
-    // --- GIỮ LẠI: Vẫn cần để lấy User entity từ UserDetails ---
-    Optional<User> findByEmail(String email);
+    private Optional<User> findByAttribute(String indexName, String attributeName, String attributeValue) {
+        Map<String, AttributeValue> eav = new HashMap<>();
+        eav.put(":val", new AttributeValue().withS(attributeValue));
 
-    Optional<User> findByUsername(String username);
+        DynamoDBQueryExpression<User> queryExpression = new DynamoDBQueryExpression<User>()
+                .withIndexName(indexName)
+                .withConsistentRead(false)
+                .withKeyConditionExpression(attributeName + " = :val")
+                .withExpressionAttributeValues(eav);
+
+        List<User> users = dynamoDBMapper.query(User.class, queryExpression);
+        return users.stream().findFirst();
+    }
+
+    public Optional<User> findByUsername(String username) {
+        return findByAttribute("username-index", "username", username);
+    }
+
+    public Optional<User> findByEmail(String email) {
+        return findByAttribute("email-index", "email", email);
+    }
+
+    public boolean existsByUsername(String username) {
+        return findByUsername(username).isPresent();
+    }
+
+    public boolean existsByEmail(String email) {
+        return findByEmail(email).isPresent();
+    }
 }

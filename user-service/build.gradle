@@ -1,49 +1,74 @@
 plugins {
-    id 'java'
-    id 'org.springframework.boot' version '3.2.5' // Sử dụng phiên bản Spring Boot mới nhất
+    id 'org.springframework.boot' version '3.3.1'
     id 'io.spring.dependency-management' version '1.1.4'
+    id 'java'
 }
 
 group = 'com.mm'
-version = '0.0.1-SNAPSHOT'
-
-java {
-    sourceCompatibility = '17'
-}
+version = '1.0.0'
+sourceCompatibility = '17'
 
 repositories {
     mavenCentral()
 }
 
-// Import BOM (Bill of Materials) của Spring Cloud AWS để quản lý phiên bản
-dependencyManagement {
-    imports {
-        mavenBom "io.awspring.cloud:spring-cloud-aws-dependencies:3.1.1"
-    }
-}
-
 dependencies {
-    // Dependency chính cho web
-    implementation 'org.springframework.boot:spring-boot-starter-web'
+    // Spring Boot core
+    implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation("org.springframework.boot:spring-boot-starter-validation")
+    implementation("org.springframework.boot:spring-boot-starter-security")
+    implementation("org.springframework.boot:spring-boot-starter-data-jpa")
 
-    // Tích hợp Spring Cloud AWS và DynamoDB
-    implementation 'io.awspring.cloud:spring-cloud-aws-starter'
-    implementation 'io.awspring.cloud:spring-cloud-aws-starter-dynamodb'
+    // AWS SDK (DynamoDB, S3, etc.)
+    implementation("software.amazon.awssdk:dynamodb:2.25.62")
+    implementation("software.amazon.awssdk:s3:2.25.62")
+    implementation("com.amazonaws:aws-java-sdk-dynamodb:1.12.742")
 
-    // Adapter để chạy Spring Boot trên AWS Lambda
-    implementation 'com.amazonaws.serverless:aws-serverless-java-container-springboot3:2.0.1'
+    // Redis
+    implementation("org.springframework.boot:spring-boot-starter-data-redis")
 
-    // Dependencies cho Spring Security và xác thực JWT qua JWKS
-    implementation 'org.springframework.boot:spring-boot-starter-security'
-    implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
+    // JWT
+    implementation("io.jsonwebtoken:jjwt-api:0.11.5")
+    runtimeOnly("io.jsonwebtoken:jjwt-impl:0.11.5")
+    runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.11.5")
 
-    // Xóa các dependency cũ sau đây nếu có:
-    // implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-    // runtimeOnly 'com.oracle.database.jdbc:ojdbc11'
+    // Lombok
+    compileOnly("org.projectlombok:lombok:1.18.32")
+    annotationProcessor("org.projectlombok:lombok:1.18.32")
+    testCompileOnly("org.projectlombok:lombok:1.18.32")
+    testAnnotationProcessor("org.projectlombok:lombok:1.18.32")
 
-    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    // Reactor (Mono, Flux)
+    implementation("io.projectreactor:reactor-core")
+
+    // OpenCSV
+    implementation("com.opencsv:opencsv:5.8")
+
+    // Java Faker
+    implementation("com.github.javafaker:javafaker:1.0.2") {
+        exclude group: "org.yaml", module: "snakeyaml"
+    }
+    implementation("org.yaml:snakeyaml:2.2")
+
+    // Nimbus JOSE JWT (for JWKS)
+    implementation("com.nimbusds:nimbus-jose-jwt:9.37.3")
+
+    // Jakarta EE
+    implementation("jakarta.validation:jakarta.validation-api:3.0.2")
+    implementation("jakarta.servlet:jakarta.servlet-api:6.0.0")
+
+    // Spring Boot Actuator (optional monitoring)
+    implementation("org.springframework.boot:spring-boot-starter-actuator")
+
+    // Spring Cloud Function for AWS Lambda
+    implementation("org.springframework.cloud:spring-cloud-starter-function-web:4.0.2")
+    implementation("org.springframework.cloud:spring-cloud-function-adapter-aws:4.0.2")
+
+    // Test
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("org.springframework.security:spring-security-test")
 }
 
-tasks.named('test') {
+test {
     useJUnitPlatform()
 }
